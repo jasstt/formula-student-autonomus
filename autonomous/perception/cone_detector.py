@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 from ultralytics import YOLO
-import random
+import json
 
 # YOLOv8 nano modeli - hafif ve gerçek zamanlı işlem için
 # Not: Eğitimli bir 'best.pt' modeli kullanılmalıdır (koni renkleri için).
@@ -23,7 +23,7 @@ class ConeDetector:
         
     def estimate_distance(self, bbox, img_width, img_height):
         """
-        Kamera matrisine ve bounding box boyutlarına göre stokastik mesafe tahmini.
+        Kamera matrisine ve bounding box boyutlarına göre deterministik mesafe tahmini.
         Fiziksel koni boyutu (yaklaşık): Genişlik 228mm, Yükseklik 325mm (FS standart)
         """
         x1, y1, x2, y2 = bbox
@@ -40,10 +40,7 @@ class ConeDetector:
             
         distance_m = (real_cone_height_m * focal_length) / h
         
-        # Sensör gürültüsü ve çevre titreşimi etkisi (Stokastik faktör)
-        noise = random.uniform(-0.05, 0.05)
-        
-        return round(distance_m + noise, 2)
+        return round(distance_m, 2)
 
     def process_frame(self, frame):
         """

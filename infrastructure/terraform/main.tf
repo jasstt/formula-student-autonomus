@@ -15,7 +15,7 @@ provider "google" {
 variable "project_id" {
   description = "Google Cloud Project ID"
   type        = string
-  default     = "593794533750"
+  default     = "YOUR_PROJECT_ID"
 }
 
 variable "region" {

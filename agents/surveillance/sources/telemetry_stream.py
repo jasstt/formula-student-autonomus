@@ -7,7 +7,7 @@ import numpy as np
 from datetime import datetime
 
 # Google Cloud Project Info
-PROJECT_ID = "593794533750"
+PROJECT_ID = "YOUR_PROJECT_ID"
 SUBSCRIPTION_ID = "sensor-data-sub"
 PUBLISH_TOPIC_ID = "agent-results-topic"
 

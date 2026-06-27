@@ -8,7 +8,7 @@ from google.cloud import pubsub_v1
 import random
 
 # Google Cloud Project Info
-PROJECT_ID = "593794533750"
+PROJECT_ID = "YOUR_PROJECT_ID"
 TOPIC_ID = "agent-results-topic"
 
 # arXiv sorgu ayarları
