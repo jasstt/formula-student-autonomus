@@ -1,38 +1,8 @@
-# Sprint 1 Doğrulama Raporu (Verification Report)
+# Sprint 1 Doğrulama Raporu (Strict Verification)
 
-## 1. Test Süreci ve Sonuçlar
-
-`test_sprint1.py` betiği ile modüller için minimal sahte girdiler (mock inputs) verilerek test gerçekleştirildi. Gerçek API ve donanım bağımlılıkları mocklanarak izole edildi.
-
-**Test Çıktısı (stdout):**
-```text
---- TESTING arxiv_scanner.py ---
-arxiv_scanner.py FAILED: cannot import name 'pubsub_v1' from 'google.cloud' (unknown location)
-
---- TESTING telemetry_stream.py ---
-telemetry_stream.py FAILED: cannot import name 'pubsub_v1' from 'google.cloud' (unknown location)
-
---- TESTING cone_detector.py ---
-cone_detector.py FAILED (ImportError): No module named 'cv2'. Make sure 'ultralytics' and 'opencv-python' are installed.
-```
-
-## 2. Bulgular ve Düzeltmeler
-
-Testin başarısız olmasının sebebi sistemde gerekli Python kütüphanelerinin bulunmamasıdır. (Modül içindeki import'lar, sistemde kurulu olmayan kütüphaneleri çağırıyor).
-
-Ancak bu testin yapılmasının sağladığı büyük faydalar ve yapılan düzeltmeler şunlardır:
-
-1. **Güvenlik Açığı (Project ID) Kapatıldı:**
-   `arxiv_scanner.py`, `telemetry_stream.py` ve `main.tf` içerisindeki hard-coded `593794533750` ID'si `YOUR_PROJECT_ID` olarak değiştirildi. Bu sayede üretim reposunda kimlik sızma riski engellendi.
-
-2. **Stokastik Hatalar Production'dan Kaldırıldı:**
-   `cone_detector.py` içerisindeki stokastik (rastgele) mesafe hatası üretim kodundan temizlendi ve `agents/digital_twin/perception_sim.py` adlı yeni bir dosyaya taşındı. Production ortamında koni tespit mesafe tahmini artık tamamen deterministik olarak çalışacak.
-
-3. **Bağımlılık (Dependency) İhtiyacı Tespit Edildi:**
-   Sistemin ayağa kalkması için `requirements.txt` ihtiyacı ortaya çıkmıştır. Kurulması gereken kütüphaneler:
-   - `google-cloud-pubsub`
-   - `opencv-python`
-   - `ultralytics`
-   - `numpy`
-
-Bir sonraki adım olarak bu eksik kütüphaneler kurulup testler tekrar edilebilir. Ek olarak, yukarıdaki tüm değişiklikler commit'lendi.
+✅ PASS — arXiv API mocklandı. 3 makale işlendi. Çıktı: 'Paper 1: Autonomous FSAE' (Skor: 0.5), 'Paper 2: YOLOv8 Cone Detection' (Skor: 0.72), 'Paper 3: Fuel Cell Control' (Skor: 0.65)
+✅ PASS — Telemetri anomali tespiti (2σ kuralı) çalışıyor. 85.0 değeri için anomali True döndü.
+❌ FAIL — YOLOv8 import hatası veriyor: cannot import name 'YOLO' from 'ultralytics' (C:\Users\VICTUS\OneDrive\Desktop\proje\formula-future\ultralytics\__init__.py). Düzeltme: requirements.txt içerisine 'ultralytics' ekle
+✅ PASS — GET /reports endpoint 200 döndürdü. İçerik: 2 rapor.
+✅ PASS — terraform validate başarılı. Syntax hatası yok.
+✅ PASS — Terraform dosyasında 593794533750 (Project ID) temizlenmiş.
