@@ -12,3 +12,7 @@ terraform.zip
 # Env
 .env
 *.env
+credentials/credentials.json
+credentials/credentials.json.json
+credentials/token.json
+credentials/service-account-key.json
