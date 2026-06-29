@@ -8,8 +8,35 @@ except ImportError:
 FIRESTORE_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT", "formula-student-autonomus")
 
 def get_calendar_service():
-    """Builds and returns the Google Calendar API service."""
-    return None
+    """
+    Builds the Google Calendar API service.
+    Loads credentials from credentials/token.json (same OAuth token as Gmail).
+    """
+    import os
+    token_path = os.path.join(os.path.dirname(__file__), '..', '..', 'credentials', 'token.json')
+
+    if not os.path.exists(token_path):
+        print(f"[AUTH] token.json bulunamadi: {token_path}")
+        print("[AUTH] 'python setup_credentials.py' calistirarak token olusturun.")
+        return None
+
+    try:
+        from google.oauth2.credentials import Credentials
+        from google.auth.transport.requests import Request
+        from googleapiclient.discovery import build
+
+        SCOPES = ['https://www.googleapis.com/auth/calendar']
+        creds = Credentials.from_authorized_user_file(token_path, SCOPES)
+
+        if creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+            with open(token_path, 'w') as f:
+                f.write(creds.to_json())
+
+        return build('calendar', 'v3', credentials=creds)
+    except Exception as e:
+        print(f"[AUTH] Calendar servisi olusturulamadi: {e}")
+        return None
 
 def schedule_meeting(company: str, contact: str, email: str, mock: bool = True):
     """
@@ -50,11 +77,14 @@ def schedule_meeting(company: str, contact: str, email: str, mock: bool = True):
     }
     
     try:
-        # created_event = service.events().insert(calendarId='primary', body=event).execute()
-        # print(f"Event created: {created_event.get('htmlLink')}")
-        pass
+        created_event = service.events().insert(
+            calendarId='primary',
+            body=event,
+            sendUpdates='all'  # Katilimcilara davet maili gonder
+        ).execute()
+        print(f"[CALENDAR] Toplanti olusturuldu: {created_event.get('htmlLink')}")
     except Exception as e:
-        print(f"Failed to create event: {e}")
+        print(f"Failed to create calendar event: {e}")
         return False
 
     # Update Firestore
