@@ -1,17 +1,19 @@
 import random
 import math
+from agents.surveillance.sources.blueprint_reader import load_vehicle_params
 
-class DigitalTwinVehicle:
+class VehicleModel:
     def __init__(self):
-        # FS standartlarında temsili araç parametreleri
-        self.mass_kg = 250.0
-        self.drag_coefficient = 0.8
-        self.frontal_area = 1.0
+        # Load blueprint parameters
+        self.params = load_vehicle_params()
+        self.mass_kg = self.params.physics.get("mass_kg", 250.0) if hasattr(self.params, "physics") else 250.0
+        self.drag_coefficient = self.params.physics.get("drag_coefficient", 0.8) if hasattr(self.params, "physics") else 0.8
+        self.frontal_area = self.params.physics.get("frontal_area", 1.0) if hasattr(self.params, "physics") else 1.0
         self.air_density = 1.225
         
         # Güç sistemi
-        self.battery_capacity_kwh = 6.0
-        self.fuel_cell_max_power_kw = 8.5
+        self.battery_capacity_kwh = self.params.powertrain["battery_capacity_wh"] / 1000.0
+        self.fuel_cell_max_power_kw = self.params.powertrain["fc_max_power_w"] / 1000.0
         
     def simulate_lap(self, track_length_m, proposed_config):
         """
@@ -57,7 +59,7 @@ class DigitalTwinVehicle:
         }
 
 if __name__ == "__main__":
-    twin = DigitalTwinVehicle()
+    twin = VehicleModel()
     mock_config = {
         "max_speed_kph": 110.0,
         "power_limit_kw": 75.0

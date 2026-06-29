@@ -1,0 +1,5 @@
+company_name,contact_person,contact_email,company_type,not_contacted
+Acme Corp,John Doe,john@acme.com,manufacturing,True
+Tech Innovations,Jane Smith,jane@techinnovations.com,tech,True
+Hydrogen Dynamics,Dr. Alan Grant,grant@hdynamics.com,hydrogen,True
+Global Logistics,Mark Johnson,mark@globallogistics.com,logistics,False

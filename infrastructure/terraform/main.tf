@@ -107,3 +107,73 @@ resource "google_cloud_scheduler_job" "arxiv_nightly" {
     data       = base64encode("{\"action\": \"start_arxiv_scan\"}")
   }
 }
+
+# --- SECRET MANAGER ---
+resource "google_secret_manager_secret" "linkedin_token" {
+  secret_id = "linkedin-access-token"
+  replication {
+    automatic = true
+  }
+}
+
+resource "google_secret_manager_secret" "instagram_token" {
+  secret_id = "instagram-access-token"
+  replication {
+    automatic = true
+  }
+}
+
+resource "google_secret_manager_secret" "gemini_api_key" {
+  secret_id = "gemini-api-key"
+  replication {
+    automatic = true
+  }
+}
+
+# --- CLOUD RUN: ORCHESTRATOR ---
+resource "google_cloud_run_service" "orchestrator_service" {
+  name     = "orchestrator-service"
+  location = var.region
+
+  template {
+    spec {
+      containers {
+        image = "gcr.io/${var.project_id}/orchestrator-service:latest"
+        env {
+          name = "GOOGLE_CLOUD_PROJECT"
+          value = var.project_id
+        }
+      }
+    }
+  }
+}
+
+# --- PUB/SUB TOPICS ---
+resource "google_pubsub_topic" "code_review_topic" {
+  name = "code-review-topic"
+}
+
+# --- CLOUD SCHEDULER: ORCHESTRATOR CYCLES ---
+resource "google_cloud_scheduler_job" "sponsor_daily" {
+  name             = "sponsor-daily-cycle"
+  description      = "Daily Sponsor Outreach Cycle"
+  schedule         = "0 10 * * 1-5" # Weekdays at 10:00
+  time_zone        = "Europe/Istanbul"
+
+  http_target {
+    http_method = "POST"
+    uri         = "${google_cloud_run_service.orchestrator_service.status[0].url}/sponsor"
+  }
+}
+
+resource "google_cloud_scheduler_job" "social_weekly" {
+  name             = "social-weekly-cycle"
+  description      = "Weekly Social Media Update"
+  schedule         = "0 18 * * 5" # Friday at 18:00
+  time_zone        = "Europe/Istanbul"
+
+  http_target {
+    http_method = "POST"
+    uri         = "${google_cloud_run_service.orchestrator_service.status[0].url}/social"
+  }
+}

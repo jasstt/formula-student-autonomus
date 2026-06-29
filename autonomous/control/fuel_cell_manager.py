@@ -1,10 +1,13 @@
 import random
 
+from agents.surveillance.sources.blueprint_reader import load_vehicle_params
+
 class FuelCellManager:
     def __init__(self):
-        # FS için standart parametreler (Örnek)
-        self.fc_max_power_kw = 8.5       # Hidrojen Yakıt hücresi max gücü
-        self.battery_capacity_kwh = 6.0  # Akümülatör kapasitesi
+        # Yüklenen parametreler
+        self.params = load_vehicle_params()
+        self.fc_max_power_kw = self.params.powertrain["fc_max_power_w"] / 1000.0
+        self.battery_capacity_kwh = self.params.powertrain["battery_capacity_wh"] / 1000.0
         
         # Anlık durum (State)
         self.current_soc_percent = 100.0 # Batarya doluluk oranı (%)

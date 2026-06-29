@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+httpx
+google-cloud-pubsub
+ultralytics
+opencv-python
+numpy

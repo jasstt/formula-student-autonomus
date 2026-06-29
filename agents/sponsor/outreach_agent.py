@@ -1,0 +1,142 @@
+import csv
+import datetime
+import os
+import re
+try:
+    from google.cloud import firestore
+except ImportError:
+    firestore = None
+try:
+    from google.oauth2.credentials import Credentials
+except ImportError:
+    Credentials = None
+try:
+    from googleapiclient.discovery import build
+except ImportError:
+    build = None
+from email.message import EmailMessage
+import base64
+
+FIRESTORE_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT", "formula-student-autonomus")
+
+def get_gmail_service():
+    """Builds and returns the Gmail API service using credentials from Secret Manager or environment."""
+    # For a real implementation, you would load token.json or from Secret Manager
+    # This is a placeholder since we will use mock=True for verification
+    return None
+
+def load_template(sponsor_type: str) -> str:
+    template_path = os.path.join("data", "sponsors", "outreach_templates.md")
+    try:
+        with open(template_path, "r", encoding="utf-8") as f:
+            content = f.read()
+    except FileNotFoundError:
+        return "Sayın [Ad Soyad], [Şirket] ile görüşmek istiyoruz."
+        
+    # Extract the template block for the specific type
+    pattern = rf"## {sponsor_type}\n(.*?)(?=\n## |\Z)"
+    match = re.search(pattern, content, re.DOTALL)
+    if match:
+        return match.group(1).strip()
+    return "Sayın [Ad Soyad], [Şirket] ile görüşmek istiyoruz."
+
+def send_sponsor_email(company: str, contact: str, email: str, sponsor_type: str, mock: bool = True):
+    """
+    Sends a customized outreach email to a potential sponsor and logs it to Firestore.
+    """
+    template = load_template(sponsor_type)
+    
+    # Fill placeholders
+    body = template.replace("[Ad Soyad]", contact)
+    body = body.replace("[Şirket]", company)
+    body = body.replace("[E-posta]", email)
+    
+    subject = f"AGÜ Formula Student FCEV - {company} Sponsorluk Görüşmesi"
+    
+    if mock:
+        print("========== MOCK EMAIL SEND ==========")
+        print(f"To: {email}")
+        print(f"Subject: {subject}")
+        print(f"Body:\n{body}")
+        print("=====================================")
+    else:
+        service = get_gmail_service()
+        message = EmailMessage()
+        message.set_content(body)
+        message["To"] = email
+        message["From"] = "sponsorship@agu-fcev.com" # Example
+        message["Subject"] = subject
+
+        encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
+        create_message = {"raw": encoded_message}
+        
+        try:
+            send_message = (service.users().messages().send(userId="me", body=create_message).execute())
+            print(f"Email sent, ID: {send_message['id']}")
+        except Exception as e:
+            print(f"Failed to send email to {email}: {e}")
+            return False
+
+    # Log to Firestore
+    try:
+        if not mock:
+            db = firestore.Client(project=FIRESTORE_PROJECT)
+            doc_ref = db.collection("sponsor_pipeline").document(company.replace(" ", "_").lower())
+            doc_ref.set({
+                "company": company,
+                "contact": contact,
+                "email": email,
+                "sent_at": datetime.datetime.now().isoformat(),
+                "template_used": sponsor_type,
+                "status": "sent",
+                "stage": "contacted"
+            }, merge=True)
+        print(f"Logged to Firestore for {company}")
+    except Exception as e:
+        print(f"Failed to log to Firestore: {e}")
+        
+    return True
+
+def batch_outreach(companies_csv_path: str, mock: bool = True):
+    """
+    Reads the target companies CSV, filters uncontacted companies, and sends emails (max 25).
+    """
+    sent_count = 0
+    updated_rows = []
+    
+    try:
+        with open(companies_csv_path, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            fieldnames = reader.fieldnames
+            
+            for row in reader:
+                not_contacted = str(row.get("not_contacted", "False")).strip().lower() == "true"
+                if not_contacted and sent_count < 25:
+                    company = row["company_name"]
+                    contact = row["contact_person"]
+                    email = row["contact_email"]
+                    sponsor_type = row["company_type"]
+                    
+                    success = send_sponsor_email(company, contact, email, sponsor_type, mock=mock)
+                    
+                    if success:
+                        row["not_contacted"] = "False"
+                        sent_count += 1
+                
+                updated_rows.append(row)
+                
+        # Write back to CSV to update not_contacted status
+        if not mock:
+            with open(companies_csv_path, "w", encoding="utf-8", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(updated_rows)
+                
+        print(f"Batch outreach completed. Sent {sent_count} emails.")
+        
+    except Exception as e:
+        print(f"Failed to run batch outreach: {e}")
+
+if __name__ == "__main__":
+    # Test execution
+    send_sponsor_email("Acme Corp", "John Doe", "john@acme.com", "manufacturing", mock=True)
