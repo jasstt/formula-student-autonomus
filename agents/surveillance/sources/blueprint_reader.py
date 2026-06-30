@@ -66,7 +66,23 @@ def load_vehicle_params() -> VehicleParams:
         safety=params["safety"]
     )
 
+class VehicleBlueprint:
+    """Wrapper class providing OO access to vehicle blueprint parameters."""
+
+    def load_vehicle_params(self) -> dict:
+        """
+        Returns vehicle parameters as a flat dict suitable for .get() access.
+        Delegates to the module-level load_vehicle_params() function.
+        """
+        vp = load_vehicle_params()
+        flat = {}
+        for section in (vp.compute, vp.sensors, vp.powertrain, vp.safety):
+            flat.update(section)
+        return flat
+
+
 if __name__ == "__main__":
+
     p = load_vehicle_params()
     print(f"Compute: {p.compute}")
     print(f"Sensors: {p.sensors}")

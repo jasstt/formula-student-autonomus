@@ -88,3 +88,4 @@ Name,Product Name,Description,Category,Type,Quantity,Estimated Cost,Total Cost,U
 "Rear Brake Pressure Sensor Mount","","Form-fitting cradle for the Rear Brake Pressure Sensor that holds the sensing surface in its rated orientation. Snap-fit retention so it can be removed for calibration without tools.","mechanical","3d_printed",1,2.00,2.00,""
 "Throttle Pedal Position Sensor Mount","","Form-fitting cradle for the Throttle Pedal Position Sensor that holds the sensing surface in its rated orientation. Snap-fit retention so it can be removed for calibration without tools.","mechanical","3d_printed",1,2.00,2.00,""
 "External Emergency Stop Button Mount","","Per-position bracket for the External Emergency Stop Button with M3 mounting holes matched to its bolt pattern. Rated for the actuator's continuous torque/load class.","mechanical","3d_printed",1,2.00,2.00,""
+"Rear Electric Motor","Emrax 228 High Voltage","Electric Motor","motor","Motor",1,17000,17000,""
