@@ -1,5 +1,6 @@
 import os
 import json
+import time
 import datetime
 import dataclasses
 from dataclasses import dataclass, field
@@ -17,6 +18,33 @@ try:
 except ImportError:
     firestore = None
 from agents.integrations.gcp_clients import GCP_PROJECT, get_firestore_client
+
+# ── Sprint 4: Katman entegrasyonları ─────────────────────────
+try:
+    from agents.memory.short_term import ShortTermMemory
+    from agents.memory.long_term import LongTermMemory
+    MEMORY_AVAILABLE = True
+except ImportError:
+    MEMORY_AVAILABLE = False
+
+try:
+    from agents.routing.model_router import route_model, TaskComplexity
+    ROUTING_AVAILABLE = True
+except ImportError:
+    ROUTING_AVAILABLE = False
+
+try:
+    from agents.observability.tracer import AgentDecision, log_decision
+    TRACER_AVAILABLE = True
+except ImportError:
+    TRACER_AVAILABLE = False
+
+try:
+    from agents.security.permissions import check_permission
+    from agents.security.audit_log import log_action
+    SECURITY_AVAILABLE = True
+except ImportError:
+    SECURITY_AVAILABLE = False
 
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
 FIRESTORE_PROJECT = GCP_PROJECT
@@ -59,6 +87,9 @@ class ChiefEngineerAgent:
         self.state = VehicleSystemState()
         self.decision_log = []
         self._setup_gemini()
+        # Sprint 4: Bellek katmanları
+        self._stm = ShortTermMemory() if MEMORY_AVAILABLE else None
+        self._ltm = LongTermMemory() if MEMORY_AVAILABLE else None
 
     def _setup_gemini(self):
         if genai and GEMINI_API_KEY:
@@ -72,15 +103,56 @@ class ChiefEngineerAgent:
                 setattr(self.state, key, value)
         self.state.last_update = datetime.datetime.now()
 
-    def synthesize_decision(self, scenario: str = 'power_optimization') -> dict:
+    def synthesize_decision(self, scenario: str = 'power_optimization', mock: bool = True) -> dict:
         """
         Gemini API ile sistem kararı sentezler.
+        Sprint 4: short_term + long_term memory, route_model(), log_decision() entegre.
 
         KRİTİK KURAL: Güvenlik kritik kararlar (EBS, emergency stop)
         ASLA otomatik uygulanmaz — sadece öneri üretilir.
         confidence < 0.6 ise insan onayı istenir.
         """
+        t_start = time.time()
         s = self.state
+        data_sources = ['vehicle_state']
+
+        # ── Sprint 4: Short-term memory'den anlık state ───────────
+        if self._stm:
+            cached = self._stm.get_vehicle_state()
+            if cached:
+                for k, v in cached.items():
+                    if hasattr(s, k):
+                        setattr(s, k, v)
+                data_sources.append('short_term_memory')
+                print('[CHIEF] short_term state yüklendi')
+
+        # ── Sprint 4: Long-term memory'den geçmiş pattern ───────
+        hist_context = ''
+        if self._ltm:
+            laps = self._ltm.query_similar_patterns(
+                'lap_history',
+                {'segment': s.track_segment},
+                top_k=3, mock=mock
+            )
+            if laps:
+                best = min(laps, key=lambda l: l.get('time_s', 99))
+                hist_context = (f'Geçmiş {len(laps)} benzer tur: '
+                                f'en iyi {best.get("time_s", "?"):.1f}s, '
+                                f'fc_ratio={best.get("fc_ratio", "?")}')
+                data_sources.append('long_term_memory')
+                print(f'[CHIEF] long_term: {hist_context}')
+
+        # ── Sprint 4: Model routing ───────────────────────────
+        task_map = {
+            'power_optimization': 'power_optimization_decision',
+            'safety_check':       'safety_check_decision',
+            'route_decision':     'route_decision',
+        }
+        model_used = 'rule-based'
+        if ROUTING_AVAILABLE:
+            routing = route_model(task_map.get(scenario, 'power_optimization_decision'))
+            model_used = routing.get('model') or 'rule-based'
+
 
         if scenario == 'power_optimization':
             prompt = f"""Sen bir Formula Student FCEV aracının baş mühendis yapay zeka asistanısın.

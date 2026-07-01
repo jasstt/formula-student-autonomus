@@ -374,3 +374,59 @@ resource "google_cloud_scheduler_job" "lstm_retrain" {
     data       = base64encode("{\"action\": \"retrain_lstm\", \"model\": \"sensor\"}")
   }
 }
+
+# ================================================================
+# SPRINT 4 — Observability, Memory, Eval, Security
+# ================================================================
+
+# Short-term memory Redis (araç anlık durumu, 5s TTL)
+# NOT: Sprint 3'te redis zaten eklendi. Bu blok Firestore koleksiyonları
+# ve Cloud Scheduler için.
+
+# --- Cloud Scheduler: Weekly Eval Report ---
+resource "google_cloud_scheduler_job" "weekly_eval_report" {
+  name             = "weekly-eval-report"
+  description      = "Her Pazartesi 09:00 haftalik agent eval raporu"
+  schedule         = "0 9 * * 1"
+  time_zone        = "Europe/Istanbul"
+  attempt_deadline = "300s"
+
+  pubsub_target {
+    topic_name = google_pubsub_topic.agent_results.id
+    data       = base64encode("{\"action\": \"generate_weekly_eval_report\"}")
+  }
+}
+
+# --- Secret Manager: Audit ve Observability ---
+resource "google_secret_manager_secret" "slack_webhook" {
+  secret_id = "slack-webhook-url"
+  replication {
+    automatic = true
+  }
+  labels = { system = "fcev-observability" }
+}
+
+# --- Cloud Run: Observability Dashboard API ---
+resource "google_cloud_run_service" "observability_api" {
+  name     = "observability-api"
+  location = var.region
+  template {
+    metadata {
+      annotations = {
+        "run.googleapis.com/minScale" = "0"
+        "run.googleapis.com/maxScale" = "2"
+      }
+    }
+    spec {
+      containers {
+        image = "gcr.io/${var.project_id}/observability-api:latest"
+        resources { limits = { memory = "512Mi", cpu = "1000m" } }
+        env { name = "GOOGLE_CLOUD_PROJECT", value = var.project_id }
+      }
+    }
+  }
+}
+
+# --- IAM: Firestore audit_trail sadece append ---
+# audit_trail koleksiyonu için delete yetkisi yok (immutable semantics)
+# Bu Firestore Security Rules ile uygulanır (Terraform dışı)
