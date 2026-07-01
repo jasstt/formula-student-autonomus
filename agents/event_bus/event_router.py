@@ -20,13 +20,14 @@ try:
     from agents.event_bus.event_definitions import FCEVEvent, EventPayload
 except ImportError:
     from event_definitions import FCEVEvent, EventPayload
+from agents.integrations.gcp_clients import GCP_PROJECT, log_critical_event, log_event
 
 
 # ===========================================================================
 # Yardımcı: Pub/Sub Yayıncı (mock veya gerçek)
 # ===========================================================================
 
-def _mock_pubsub_publish(topic: str, message: dict) -> None:
+def _pubsub_publish(topic: str, message: dict, mock: bool = True) -> bool:
     """
     Google Cloud Pub/Sub'a mesaj yayımlar.
     Gerçek Pub/Sub kütüphanesi mevcut değilse mock modda çalışır.
@@ -35,25 +36,30 @@ def _mock_pubsub_publish(topic: str, message: dict) -> None:
         topic (str): Hedef Pub/Sub konu adı.
         message (dict): Yayımlanacak mesaj sözlüğü.
     """
+    if mock:
+        print(f"[PUBSUB:MOCK] {topic}: {json.dumps(message, default=str, ensure_ascii=False)}")
+        return True
+
     try:
         from google.cloud import pubsub_v1  # type: ignore
 
         publisher = pubsub_v1.PublisherClient()
-        project_id = os.environ.get("GCP_PROJECT_ID", "agu-fcev-project")
+        project_id = GCP_PROJECT
         topic_path = publisher.topic_path(project_id, topic)
         data_bytes = json.dumps(message, default=str).encode("utf-8")
         future = publisher.publish(topic_path, data_bytes)
         print(f"[PUBSUB] Yayımlandi → {topic} (msg_id={future.result()})")
-    except Exception:
-        # Mock modu: kütüphane yoksa veya hata varsa terminale yazdır
-        print(f"[PUBSUB] {topic}: {json.dumps(message, default=str, ensure_ascii=False)}")
+        return True
+    except Exception as exc:
+        print(f"[PUBSUB] Yayinlanamadi → {topic}: {exc}")
+        return False
 
 
 # ===========================================================================
 # Yardımcı: Slack Bildirici (mock)
 # ===========================================================================
 
-def _mock_slack_notify(message: str, channel: str = "#fcev-alerts") -> None:
+def _slack_notify(message: str, channel: str = "#fcev-alerts", mock: bool = True) -> bool:
     """
     Slack kanalına bildirim gönderir (mock modda terminale yazar).
 
@@ -61,26 +67,35 @@ def _mock_slack_notify(message: str, channel: str = "#fcev-alerts") -> None:
         message (str): Gönderilecek mesaj metni.
         channel (str): Hedef Slack kanalı. Varsayılan: '#fcev-alerts'.
     """
+    if mock:
+        print(f"[SLACK:MOCK] {channel}: {message}")
+        return True
+
     try:
         slack_token = os.environ.get("SLACK_BOT_TOKEN", "")
-        if slack_token:
-            import urllib.request
-            payload = json.dumps({"channel": channel, "text": message}).encode()
-            req = urllib.request.Request(
-                "https://slack.com/api/chat.postMessage",
-                data=payload,
-                headers={
-                    "Authorization": f"Bearer {slack_token}",
-                    "Content-Type": "application/json",
-                },
-            )
-            urllib.request.urlopen(req, timeout=5)
-            print(f"[SLACK] Gönderildi → {channel}: {message[:80]}")
-            return
-    except Exception:
-        pass  # Gerçek gönderim başarısız olursa mock'a düş
-
-    print(f"[SLACK] {channel}: {message}")
+        if not slack_token:
+            print("[SLACK] SLACK_BOT_TOKEN bulunamadi.")
+            return False
+        import urllib.request
+        payload = json.dumps({"channel": channel, "text": message}).encode()
+        req = urllib.request.Request(
+            "https://slack.com/api/chat.postMessage",
+            data=payload,
+            headers={
+                "Authorization": f"Bearer {slack_token}",
+                "Content-Type": "application/json",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            raw = json.loads(resp.read())
+        if not raw.get("ok"):
+            print(f"[SLACK] Gonderilemedi: {raw}")
+            return False
+        print(f"[SLACK] Gönderildi → {channel}: {message[:80]}")
+        return True
+    except Exception as exc:
+        print(f"[SLACK] Gonderilemedi → {channel}: {exc}")
+        return False
 
 
 # ===========================================================================
@@ -100,6 +115,7 @@ def route_event(event: FCEVEvent, payload: dict, mock: bool = True) -> list:
         list[str]: Gerçekleştirilen eylemlerin listesi.
     """
     actions: list = []
+    log_event(event.name, payload, source=payload.get("source", "event_router"), severity="info")
 
     # -----------------------------------------------------------------------
     # NEW_COMPONENT_ADDED — Yeni bileşen eklendi
@@ -137,10 +153,11 @@ def route_event(event: FCEVEvent, payload: dict, mock: bool = True) -> list:
         actions.append("electrical_safety: triggered")
 
         # Pub/Sub ve Slack
-        _mock_pubsub_publish("component-update-topic", payload)
-        _mock_slack_notify(
+        _pubsub_publish("component-update-topic", payload, mock=mock)
+        _slack_notify(
             f"Yeni parça eklendi: {payload.get('component_name', '?')}",
             "#fcev-hardware",
+            mock=mock,
         )
 
         component_text = " ".join(
@@ -217,10 +234,11 @@ def route_event(event: FCEVEvent, payload: dict, mock: bool = True) -> list:
         except Exception as _e:
             print(f"[LINKEDIN] Mock mod — generate_technical_post: {_e}")
 
-        _mock_slack_notify(
+        _slack_notify(
             f"Motor seçildi: {payload.get('motor_name')} "
             f"— Simülasyonlar yeniden başlatılıyor",
             "#fcev-technical",
+            mock=mock,
         )
 
     # -----------------------------------------------------------------------
@@ -229,9 +247,10 @@ def route_event(event: FCEVEvent, payload: dict, mock: bool = True) -> list:
     elif event == FCEVEvent.SENSOR_CRITICAL:
         print("[ROUTER] !!! SENSOR_CRITICAL !!!")
 
-        _mock_slack_notify(
+        _slack_notify(
             "[ALARM] KRITIK SENSOR ALARMI: " + str(payload),
             "#fcev-emergency",
+            mock=mock,
         )
 
         # Acil eylemler
@@ -239,6 +258,15 @@ def route_event(event: FCEVEvent, payload: dict, mock: bool = True) -> list:
         actions.append("safety_monitor_alert")
         actions.append("halt_all_processes")
         actions.append("firestore_log")
+        log_id = log_critical_event(
+            FCEVEvent.SENSOR_CRITICAL.value,
+            payload,
+            source=payload.get("source", "event_router"),
+        )
+        if log_id:
+            print(f"[FIRESTORE] Kritik olay loglandi: critical_events/{log_id}")
+        else:
+            print("[FIRESTORE] Kritik olay loglanamadi.")
 
         print("[SAFETY] Tüm işlemler durduruldu. İnsan müdahalesi gerekli.")
 
@@ -273,9 +301,10 @@ def route_event(event: FCEVEvent, payload: dict, mock: bool = True) -> list:
             print(f"[SOCIAL] Mock mod — generate_technical_post: {_e}")
         actions.append("social_post_generated")
 
-        _mock_slack_notify(
+        _slack_notify(
             f"[YILDIZ] {payload.get('company')} sponsorlugu onayladi!",
             "#fcev-sponsors",
+            mock=mock,
         )
 
         actions.append("thank_you_email")

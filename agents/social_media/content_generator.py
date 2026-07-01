@@ -17,7 +17,7 @@ def generate_technical_post(event_type: str, data: dict, mock: bool = True) -> d
     if event_type not in valid_events:
         raise ValueError(f"Invalid event_type. Must be one of {valid_events}")
 
-    if mock or not GEMINI_API_KEY:
+    if mock:
         print(f"========== MOCK CONTENT GENERATION ==========")
         print(f"Event: {event_type}")
         print(f"Data: {data}")
@@ -31,6 +31,13 @@ def generate_technical_post(event_type: str, data: dict, mock: bool = True) -> d
             "hashtags": ["#FormulaStudent", "#Autonomous", "#FCEV", "#AGU"],
             "image_prompt": f"A high-tech futuristic Formula Student race car with {company} logo on it, glowing hydrogen fuel cell."
         }
+
+    if not GEMINI_API_KEY:
+        print("[GEMINI] GEMINI_API_KEY bulunamadi; gercek icerik uretilemedi.")
+        return None
+    if not genai:
+        print("[GEMINI] google-generativeai paketi kurulu degil.")
+        return None
 
     # Real Gemini Prompt
     prompt = f"""

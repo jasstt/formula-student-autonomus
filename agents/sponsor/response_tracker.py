@@ -4,9 +4,10 @@ try:
     from google.cloud import firestore
 except ImportError:
     firestore = None
+from agents.integrations.gcp_clients import GCP_PROJECT, get_firestore_client
 from agents.sponsor.meeting_scheduler import schedule_meeting
 
-FIRESTORE_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT", "formula-student-autonomus")
+FIRESTORE_PROJECT = GCP_PROJECT
 
 def get_gmail_service():
     """Builds the Gmail API service from credentials/token.json."""
@@ -98,7 +99,7 @@ def check_responses(mock: bool = True):
     db = None
     if firestore and FIRESTORE_PROJECT:
         try:
-            db = firestore.Client(project=FIRESTORE_PROJECT)
+            db = get_firestore_client()
         except Exception:
             pass
 

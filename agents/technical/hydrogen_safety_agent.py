@@ -1,4 +1,5 @@
 import os
+import json
 import datetime
 
 # H2 alarm seviyeleri (LFL = %4 hacimsel = 40000 ppm)
@@ -16,7 +17,7 @@ def monitor_hydrogen_system(sensor_readings: list = None, mock: bool = True) -> 
     """
     print('[H2 SAFETY] Hidrojen güvenlik izleme başlıyor...')
 
-    if mock or sensor_readings is None:
+    if mock:
         import random
         sensor_readings = [
             {'sensor_id': 'H2_S1', 'ppm': random.randint(50, 300), 'location': 'engine_bay'},
@@ -24,6 +25,12 @@ def monitor_hydrogen_system(sensor_readings: list = None, mock: bool = True) -> 
             {'sensor_id': 'H2_S3', 'ppm': random.randint(10, 100), 'location': 'tank_area'},
             {'sensor_id': 'PRESSURE', 'bar': random.uniform(400, 650), 'location': 'tank'},
         ]
+    elif sensor_readings is None:
+        sensor_file = os.getenv('H2_SENSOR_FILE', os.path.join('data', 'telemetry', 'hydrogen_readings.json'))
+        if not os.path.exists(sensor_file):
+            raise RuntimeError(f'H2 sensor verisi yok: {sensor_file}')
+        with open(sensor_file, 'r', encoding='utf-8') as f:
+            sensor_readings = json.load(f)
 
     alerts = []
     max_ppm = 0

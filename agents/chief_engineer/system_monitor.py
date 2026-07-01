@@ -5,13 +5,14 @@ import threading
 import json
 
 from agents.chief_engineer.main import ChiefEngineerAgent, VehicleSystemState
+from agents.integrations.gcp_clients import GCP_PROJECT
 
 try:
     from google.cloud import pubsub_v1
 except ImportError:
     pubsub_v1 = None
 
-PUBSUB_PROJECT = os.getenv('GOOGLE_CLOUD_PROJECT', 'formula-student-autonomus')
+PUBSUB_PROJECT = GCP_PROJECT
 
 
 class SystemMonitor:

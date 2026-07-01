@@ -4,6 +4,8 @@ import datetime
 import json
 import urllib.request
 import urllib.error
+from agents.integrations.github_client import create_issue, github_get
+from agents.integrations.gcp_clients import GCP_PROJECT, get_firestore_client
 try:
     from google.cloud import firestore, pubsub_v1
 except ImportError:
@@ -14,8 +16,7 @@ try:
 except ImportError:
     genai = None
 
-FIRESTORE_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT", "formula-student-autonomus")
-GITHUB_TOKEN      = os.getenv("GITHUB_TOKEN", "")
+FIRESTORE_PROJECT = GCP_PROJECT
 GITHUB_REPO       = os.getenv("GITHUB_REPO", "jasstt/formula-student-autonomus")
 GEMINI_API_KEY    = os.getenv("GEMINI_API_KEY", "")
 
@@ -23,19 +24,8 @@ GEMINI_API_KEY    = os.getenv("GEMINI_API_KEY", "")
 # Yardimci: GitHub API istegi
 # ─────────────────────────────────────────────────────────────
 def _github_get(path: str) -> dict | None:
-    url = f"https://api.github.com/repos/{GITHUB_REPO}{path}"
-    headers = {
-        "Authorization": f"token {GITHUB_TOKEN}",
-        "Accept": "application/vnd.github.v3+json",
-        "User-Agent": "AGU-FCEV-Agent",
-    }
-    try:
-        req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            return json.loads(resp.read())
-    except Exception as e:
-        print(f"[GITHUB] API hatasi ({path}): {e}")
-        return None
+    result = github_get(path)
+    return result if isinstance(result, dict) else result
 
 # ─────────────────────────────────────────────────────────────
 # Yardimci: Yerel Python dosyalarini analiz et (AST)
@@ -122,25 +112,7 @@ Kisa, teknik ve oncelik sirali bir Turkce ozet yaz (max 200 kelime):
 # Yardimci: GitHub Issue ac
 # ─────────────────────────────────────────────────────────────
 def _create_github_issue(title: str, body: str) -> str | None:
-    if not GITHUB_TOKEN:
-        print("[GITHUB] GITHUB_TOKEN ayarli degil, issue acilamiyor.")
-        return None
-    url = f"https://api.github.com/repos/{GITHUB_REPO}/issues"
-    payload = json.dumps({"title": title, "body": body, "labels": ["code-quality", "automated"]}).encode()
-    headers = {
-        "Authorization": f"token {GITHUB_TOKEN}",
-        "Accept": "application/vnd.github.v3+json",
-        "User-Agent": "AGU-FCEV-Agent",
-        "Content-Type": "application/json",
-    }
-    try:
-        req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            issue = json.loads(resp.read())
-            return issue.get("html_url")
-    except Exception as e:
-        print(f"[GITHUB] Issue acilamadi: {e}")
-        return None
+    return create_issue(title, body, labels=["code-quality", "automated"])
 
 # ─────────────────────────────────────────────────────────────
 # Yardimci: Pub/Sub'a yayinla
@@ -259,7 +231,7 @@ def analyze_autonomous_code(mock: bool = True):
     # 7. Firestore log
     if firestore and FIRESTORE_PROJECT:
         try:
-            db = firestore.Client(project=FIRESTORE_PROJECT)
+            db = get_firestore_client()
             db.collection("code_reports").add({
                 "timestamp": datetime.datetime.now().isoformat(),
                 "commit_sha": last_sha,

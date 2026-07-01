@@ -6,17 +6,20 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 
 try:
-    import google.generativeai as genai
+    from google import genai
+    from google.genai import types as genai_types
 except ImportError:
     genai = None
+    genai_types = None
 
 try:
     from google.cloud import firestore
 except ImportError:
     firestore = None
+from agents.integrations.gcp_clients import GCP_PROJECT, get_firestore_client
 
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
-FIRESTORE_PROJECT = os.getenv('GOOGLE_CLOUD_PROJECT', 'formula-student-autonomus')
+FIRESTORE_PROJECT = GCP_PROJECT
 
 
 @dataclass
@@ -59,8 +62,7 @@ class ChiefEngineerAgent:
 
     def _setup_gemini(self):
         if genai and GEMINI_API_KEY:
-            genai.configure(api_key=GEMINI_API_KEY)
-            self.model = genai.GenerativeModel('gemini-2.5-flash')
+            self.model = genai.Client(api_key=GEMINI_API_KEY)
         else:
             self.model = None
 
@@ -153,7 +155,10 @@ JSON formatında yanıt ver:
         """Gemini API çağrısı. Hata halinde kural tabanlı fallback."""
         if self.model:
             try:
-                response = self.model.generate_content(prompt)
+                response = self.model.models.generate_content(
+                    model='gemini-2.5-flash',
+                    contents=prompt
+                )
                 text = response.text.strip()
                 # JSON parse
                 if '```json' in text:
@@ -203,12 +208,11 @@ JSON formatında yanıt ver:
         }
         self.decision_log.append(entry)
 
-        if firestore and FIRESTORE_PROJECT:
-            try:
-                db = firestore.Client(project=FIRESTORE_PROJECT)
-                db.collection('chief_engineer_decisions').add(entry)
-            except Exception as e:
-                pass  # Firestore opsiyonel
+        try:
+            db = get_firestore_client()
+            db.collection('chief_engineer_decisions').add(entry)
+        except Exception as e:
+            print(f'[FIRESTORE] Chief Engineer karar logu yazilamadi: {e}')
 
 
 def main(mock: bool = True):

@@ -2,6 +2,14 @@ fastapi
 uvicorn
 httpx
 google-cloud-pubsub
+google-cloud-firestore<2.22
+protobuf<6
+google-api-python-client
+google-auth
+google-auth-oauthlib
+google-generativeai
 ultralytics
 opencv-python
 numpy
+pytz
+requests

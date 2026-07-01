@@ -1,15 +1,17 @@
 import os
 import json
-import random
 import time
-from google.cloud import pubsub_v1
-import numpy as np
+try:
+    from google.cloud import pubsub_v1
+except ImportError:
+    pubsub_v1 = None
 from datetime import datetime
+from agents.integrations.gcp_clients import GCP_PROJECT
 
 # Google Cloud Project Info
-PROJECT_ID = "YOUR_PROJECT_ID"
-SUBSCRIPTION_ID = "sensor-data-sub"
-PUBLISH_TOPIC_ID = "agent-results-topic"
+PROJECT_ID = GCP_PROJECT
+SUBSCRIPTION_ID = os.getenv("SENSOR_SUBSCRIPTION_ID", "sensor-data-sub")
+PUBLISH_TOPIC_ID = os.getenv("AGENT_RESULTS_TOPIC_ID", "agent-results-topic")
 
 # Anomaly detection thresholds for stochastic simulation
 # Sensor_id: (mean, std_dev)
@@ -25,22 +27,18 @@ SENSOR_PROFILES = {
     "steering_angle_deg": (0.0, 15.0),
 }
 
-# Stochastic kalibrasyon faktörü (Ortam ısısı vb. dış etkenler için)
-ENVIRONMENT_NOISE_FACTOR = random.uniform(0.9, 1.1)
+ENVIRONMENT_CALIBRATION_FACTOR = float(os.getenv("TELEMETRY_CALIBRATION_FACTOR", "1.0"))
 
 def detect_anomaly(sensor_id, value):
     """
-    Stokastik anomali tespiti (>2σ sapma).
-    Gerçek dünya belirsizliklerini (sensör gürültüsü vb.) hesaba katar.
+    Deterministik anomali tespiti (>2σ sapma).
     """
     if sensor_id not in SENSOR_PROFILES:
         return False
     
     mean, std = SENSOR_PROFILES[sensor_id]
     
-    # Sensör gürültüsünü simüle et
-    noise = np.random.normal(0, std * 0.1)
-    adjusted_value = (value * ENVIRONMENT_NOISE_FACTOR) + noise
+    adjusted_value = value * ENVIRONMENT_CALIBRATION_FACTOR
     
     z_score = abs(adjusted_value - mean) / std
     
@@ -76,13 +74,15 @@ def report_anomaly(sensor_data):
     publisher = pubsub_v1.PublisherClient()
     topic_path = publisher.topic_path(PROJECT_ID, PUBLISH_TOPIC_ID)
     
-    # Risk skoru hesaplama (Stokastik varyans tabanlı)
-    risk_variance = random.uniform(1.0, 1.5)
+    sensor_id = sensor_data.get("sensor_id")
+    value = float(sensor_data.get("value", 0))
+    mean, std = SENSOR_PROFILES.get(sensor_id, (value, 1.0))
+    z_score = abs((value * ENVIRONMENT_CALIBRATION_FACTOR) - mean) / max(std, 1e-6)
     
     report = {
         "source": "telemetry_stream",
         "type": "hardware_anomaly",
-        "urgency_score": round(min(10, random.uniform(7, 10) * risk_variance), 2),
+        "urgency_score": round(min(10, 5 + z_score), 2),
         "data": sensor_data,
         "timestamp": datetime.utcnow().isoformat(),
         "action_required": "IMMEDIATE_ANALYSIS"
@@ -92,6 +92,8 @@ def report_anomaly(sensor_data):
     print(f"Acil rapor iletildi: {report['urgency_score']} aciliyet skoru.")
 
 def start_listening():
+    if not pubsub_v1:
+        raise RuntimeError("google-cloud-pubsub kurulu degil.")
     subscriber = pubsub_v1.SubscriberClient()
     subscription_path = subscriber.subscription_path(PROJECT_ID, SUBSCRIPTION_ID)
     

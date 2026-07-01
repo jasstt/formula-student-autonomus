@@ -1,4 +1,5 @@
 import random
+import os
 
 from agents.surveillance.sources.blueprint_reader import load_vehicle_params
 
@@ -13,7 +14,7 @@ class FuelCellManager:
         self.current_soc_percent = 100.0 # Batarya doluluk oranı (%)
         self.fc_output_kw = 0.0          # Yakıt hücresinin anlık üretimi
         
-    def compute_power_distribution(self, torque_demand_kw, dt_seconds):
+    def compute_power_distribution(self, torque_demand_kw, dt_seconds, measured_soc_percent=None):
         """
         Talep edilen gücü (motorların çektiği) karşılamak için
         Batarya ve Fuel Cell arasındaki enerji dengelemesini yapar (Low-level controller).
@@ -22,8 +23,12 @@ class FuelCellManager:
             torque_demand_kw (float): Motorların talep ettiği toplam güç (kW). Negatif ise rejeneratif frenleme.
             dt_seconds (float): Zaman adımı.
         """
-        # Stokastik sensör hataları (Gerçek araçta ölçümler hafif sapar)
-        measured_soc = self.current_soc_percent + random.uniform(-0.5, 0.5)
+        if measured_soc_percent is not None:
+            measured_soc = measured_soc_percent
+        elif os.getenv("FCEV_SIM_NOISE", "0") == "1":
+            measured_soc = self.current_soc_percent + random.uniform(-0.5, 0.5)
+        else:
+            measured_soc = self.current_soc_percent
         
         # Basit Kural (Rule-Based Control):
         # 1. SOC %80 altındaysa Fuel Cell maksimum kapasitede şarj etmeye çalışsın

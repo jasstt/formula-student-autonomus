@@ -6,6 +6,7 @@ try:
     from google.cloud import firestore
 except ImportError:
     firestore = None
+from agents.integrations.gcp_clients import GCP_PROJECT, get_firestore_client
 try:
     from google.oauth2.credentials import Credentials
 except ImportError:
@@ -17,7 +18,8 @@ except ImportError:
 from email.message import EmailMessage
 import base64
 
-FIRESTORE_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT", "formula-student-autonomus")
+FIRESTORE_PROJECT = GCP_PROJECT
+ALLOW_SPONSOR_EMAIL_SEND = os.getenv("ALLOW_SPONSOR_EMAIL_SEND", "").lower() in {"1", "true", "yes"}
 
 def get_gmail_service():
     """
@@ -92,11 +94,17 @@ def send_sponsor_email(company: str, contact: str, email: str, sponsor_type: str
         print(f"Body:\n{body}")
         print("=====================================")
     else:
+        if not ALLOW_SPONSOR_EMAIL_SEND:
+            print("[SAFETY] ALLOW_SPONSOR_EMAIL_SEND=1 degil; sponsor emaili gonderilmedi.")
+            return False
         service = get_gmail_service()
+        if not service:
+            print("[GMAIL] Servis hazir degil; email gonderilmedi.")
+            return False
         message = EmailMessage()
         message.set_content(body)
         message["To"] = email
-        message["From"] = "sponsorship@agu-fcev.com" # Example
+        message["From"] = os.getenv("GMAIL_SENDER", "me")
         message["Subject"] = subject
 
         encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
@@ -112,7 +120,7 @@ def send_sponsor_email(company: str, contact: str, email: str, sponsor_type: str
     # Log to Firestore
     try:
         if not mock:
-            db = firestore.Client(project=FIRESTORE_PROJECT)
+            db = get_firestore_client()
             doc_ref = db.collection("sponsor_pipeline").document(company.replace(" ", "_").lower())
             doc_ref.set({
                 "company": company,
@@ -135,6 +143,10 @@ def batch_outreach(companies_csv_path: str, mock: bool = True):
     """
     sent_count = 0
     updated_rows = []
+
+    if not mock and not ALLOW_SPONSOR_EMAIL_SEND:
+        print("[SAFETY] Sponsor outreach gercek modda kilitli; ALLOW_SPONSOR_EMAIL_SEND=1 olmadan mail atilmaz.")
+        return
     
     try:
         with open(companies_csv_path, "r", encoding="utf-8") as f:

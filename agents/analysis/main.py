@@ -1,17 +1,19 @@
 import json
-import random
+import urllib.request
 from datetime import datetime
-from google.cloud import pubsub_v1
 import os
+try:
+    from google.cloud import pubsub_v1
+except ImportError:
+    pubsub_v1 = None
+from agents.integrations.gcp_clients import GCP_PROJECT
 
-PROJECT_ID = "YOUR_PROJECT_ID"
+PROJECT_ID = GCP_PROJECT
 SUBSCRIBE_TOPIC_ID = "agent-results-topic"
-DASHBOARD_URL = "http://dashboard-backend-url/api" # Mock url
+DASHBOARD_URL = os.getenv("DASHBOARD_API_URL", "http://127.0.0.1:8000")
 
 class AnalysisAgent:
     def __init__(self):
-        # Gerçekte bir NotebookLM API bağlantısı veya RAG sistemi olur.
-        # Biz burada stochastic kararlar alacak kural motorunu (Rule Engine) simüle ediyoruz.
         self.rules_base = {
             "energy_efficiency": "High",
             "lap_time_priority": 0.7,  # 0.0 - 1.0 (1.0 = Max agresiflik)
@@ -33,19 +35,27 @@ class AnalysisAgent:
         return {"action": "monitor", "reason": "Anomaly within acceptable threshold"}
 
     def generate_ab_test_config(self, reason, context):
-        """Stokastik kural motoruyla yeni bir konfigürasyon önerir."""
-        
-        # NotebookLM'den çekilen kurallara dayalı rastgele varyasyon (Stochastic behavior)
-        speed_modifier = random.uniform(0.8, 1.2) if reason != "safety_mode" else 0.7
-        power_limit_kw = round(random.uniform(70.0, 85.0) * (self.rules_base["lap_time_priority"]), 2)
-        
+        """Rule-base ile tekrarlanabilir yeni bir konfigürasyon önerir."""
+        if reason == "safety_mode":
+            speed_modifier = 0.70
+            power_limit_kw = 45.0
+            pid_p = 0.8
+        elif reason == "algorithm_update":
+            speed_modifier = 1.05
+            power_limit_kw = round(80.0 * self.rules_base["lap_time_priority"], 2)
+            pid_p = 1.1
+        else:
+            speed_modifier = 1.0
+            power_limit_kw = round(72.0 * self.rules_base["lap_time_priority"], 2)
+            pid_p = 1.0
+
         config = {
             "action": "digital_twin_test_required",
             "context": context,
             "proposed_parameters": {
                 "max_speed_kph": round(120.0 * speed_modifier, 1),
                 "power_limit_kw": power_limit_kw,
-                "pid_p": round(random.uniform(0.5, 1.5), 2)
+                "pid_p": pid_p
             },
             "timestamp": datetime.utcnow().isoformat()
         }
@@ -65,7 +75,6 @@ class AnalysisAgent:
             
             if result and result.get("action") == "digital_twin_test_required":
                 print(f"[ANALYSIS] Yeni konfigürasyon üretildi: {result}")
-                # Gerçekte burada Digital Twin triggerlanır veya Dashboard'a onay için gönderilir
                 self.forward_to_dashboard(result)
                 
             message.ack()
@@ -74,10 +83,31 @@ class AnalysisAgent:
             message.nack()
             
     def forward_to_dashboard(self, config):
-        """Dashboard'a onaya veya teste gönder (Mock)"""
-        print(f"Dashboard'a iletiliyor... {config['context'][:30]}...")
+        """Dashboard onay kuyruğuna gerçek HTTP isteğiyle gönderir."""
+        payload = json.dumps({
+            "title": f"Analysis proposal: {config['context'][:80]}",
+            "source": "analysis_agent",
+            "impact_score": 9.0 if config.get("proposed_parameters", {}).get("max_speed_kph", 0) < 90 else 7.0,
+            "status": "PENDING",
+            "payload": config,
+        }).encode("utf-8")
+        try:
+            req = urllib.request.Request(
+                f"{DASHBOARD_URL.rstrip('/')}/reports",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                print(f"[DASHBOARD] Proposal iletildi: HTTP {resp.status}")
+                return True
+        except Exception as exc:
+            print(f"[DASHBOARD] Proposal iletilemedi: {exc}")
+            return False
 
 def start_subscriber():
+    if not pubsub_v1:
+        raise RuntimeError("google-cloud-pubsub kurulu degil.")
     subscriber = pubsub_v1.SubscriberClient()
     subscription_path = subscriber.subscription_path(PROJECT_ID, SUBSCRIBE_TOPIC_ID + "-sub")
     

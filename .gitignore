@@ -16,3 +16,12 @@ credentials/credentials.json
 credentials/credentials.json.json
 credentials/token.json
 credentials/service-account-key.json
+credentials/*.json
+gcp-credentials/
+formula-agent-key.json
+*service-account*.json
+*-key.json
+
+# Runtime state
+data/social_media/*.json
+reports/weight_analysis_*.md

@@ -5,8 +5,9 @@ try:
     from google.cloud import firestore
 except ImportError:
     firestore = None
+from agents.integrations.gcp_clients import GCP_PROJECT, get_firestore_client
 
-FIRESTORE_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT", "formula-student-autonomus")
+FIRESTORE_PROJECT = GCP_PROJECT
 
 VALID_STAGES = ["contacted", "responded", "meeting", "negotiating", "agreed", "closed"]
 
@@ -60,7 +61,7 @@ def update_pipeline(company: str, stage: str, mock: bool = True):
         print("==========================================")
     else:
         try:
-            db = firestore.Client(project=FIRESTORE_PROJECT)
+            db = get_firestore_client()
             doc_ref = db.collection("sponsor_pipeline").document(company.replace(" ", "_").lower())
             doc_ref.set({
                 "stage": stage,
@@ -79,7 +80,7 @@ def update_pipeline(company: str, stage: str, mock: bool = True):
             content = generate_technical_post("sponsor_joined", {"company": company}, mock=mock)
             
             if content and not mock:
-                post_to_linkedin(content["linkedin_text"])
+                post_to_linkedin(content["linkedin_text"], mock=False)
                 
         except ImportError:
             print("Social media agents not yet implemented or available.")
